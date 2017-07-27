@@ -1,0 +1,133 @@
+// Proto-Protocols - A Workaround for some "Protocol can only be used as a generic constraint" error situations
+// a PATs Swift 3.1 Playground (c) 2017 Jon Gilbert. MIT License
+// Works with minor mods in Swift 4
+
+// So you want to get around the dreaded error: protocol 'Bar' can only be used as a generic constraint because it has Self or associated type requirements?
+
+import Foundation
+
+// Declare the properties you want to be able to access inside a non-generic, non-PAT "protoprotocol", a protocol wrapper that declares the non-generic aspects of the interface that you want to expose to iterators and collections, etc.
+
+/* Proto-protocols */
+
+protocol ProtoFooBar {
+    var id:String {
+        get
+        set
+    }
+    var creationTime:Date {
+        get
+        set
+    }
+    var hashValue:Int {
+        get
+    }
+}
+
+// Now put some extensions we'll need later, but so they'll be accessible outside the generic protocol they're needed for!
+
+/* Proto-Extensions */
+
+extension ProtoFooBar {
+    var hashValue:Int {
+        get {
+            return id.characters.count + Int(creationTime.timeIntervalSince1970)
+        }
+    }
+}
+
+// Next, declare the generic aspects of your protocols.
+
+/* PATs - Protocols with Associated Types (thanks Alexis Gallagher) */
+
+protocol Foo:ProtoFooBar,Hashable {
+    associatedtype SomeBar //:Bar <- This type constraint can be added in Swift 4
+    var bars:[SomeBar] {
+        get
+        set
+    }
+}
+
+protocol Bar:ProtoFooBar,Hashable {
+    associatedtype SomeFoo //:Foo <- This type constraint can be added in Swift 4
+    var foos:[SomeFoo] {
+        get
+        set
+    }
+}
+
+// Now declare types that implement the protocols 
+
+/* Structs */
+
+struct CandyBar:Bar {
+    typealias SomeFoo = FrothyFoo
+    var id = ""
+    var creationTime = Date()
+    var foos:[SomeFoo] = []
+    static func ==(lhs: CandyBar, rhs: CandyBar) -> Bool {
+        return lhs.hashValue == rhs.hashValue
+    }
+}
+
+struct FrothyFoo:Foo {
+    typealias SomeBar = CandyBar
+    var id = ""
+    var creationTime = Date()
+    var bars:[SomeBar] = []
+    static func ==(lhs: FrothyFoo, rhs: FrothyFoo) -> Bool {
+        return lhs.hashValue == rhs.hashValue
+    }
+}
+
+// Now, lets make some stuff 
+
+/* Declarations & Code */
+
+let candyBar1 = CandyBar()
+let candyBar2 = CandyBar()
+let frothyFoo1 = FrothyFoo()
+
+// Normally, with generic protocols (PATs), you would not be able to make a [Bar] array because you'll get that dreaded error.
+// So you would be forced to do the following, which prevents dynamic dispatch (i.e. you cannot send an array of different
+// kinds of Bars, like CandyBars and HellBars and FaceBars) to a function. 
+
+let bars:[CandyBar] = [candyBar1,candyBar2]
+
+func barProcessor<B:Bar>(_ bars:[B])->Void {
+    for b in bars {
+        print("Bar created at: \(b.creationTime.timeIntervalSince1970)")
+    }
+}
+
+barProcessor(bars)
+
+// However using the ProtoFooBar proto-protocol declaring the non-generic portions of the interface ahead of time, 
+// we can now have dynamic dispatch. 
+
+let bars2:[ProtoFooBar] = [candyBar1,candyBar2,frothyFoo1]
+
+func foobarProcessor2(_ foobars:[ProtoFooBar])->Void {
+    for fb in foobars {
+        var type:String = ""
+        switch fb.self {
+        case is CandyBar:
+            type = "CandyBar"
+            break
+        case is FrothyFoo: 
+            type = "FrothyFoo"
+            break
+        default: 
+            type = "Unknown"
+            print("Unknown FooBar detected!")
+            
+        }
+        print("\(type) created at: \(fb.creationTime.timeIntervalSince1970)")
+    }
+}
+
+foobarProcessor2(bars2)
+
+// PS -- I'm just going to leave this here:
+
+let stuffs = [AnyHashable(candyBar1),AnyHashable(candyBar2)]
